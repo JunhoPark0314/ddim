@@ -10,6 +10,7 @@ import numpy as np
 import torch.utils.tensorboard as tb
 
 from runners.diffusion import Diffusion
+from runners.distill_diffusion import DistillDiffusion
 
 torch.set_printoptions(sci_mode=False)
 
@@ -28,6 +29,20 @@ def parse_args_and_config():
         "--doc",
         type=str,
         required=True,
+        help="A string for documentation purpose. "
+        "Will be the name of the log folder.",
+    )
+    parser.add_argument(
+        "--trg-doc",
+        type=str,
+        default=None,
+        help="A string for documentation purpose. "
+        "Will be the name of the log folder.",
+    )
+    parser.add_argument(
+        "--runner",
+        type=str,
+        default="diffusion",
         help="A string for documentation purpose. "
         "Will be the name of the log folder.",
     )
@@ -89,6 +104,8 @@ def parse_args_and_config():
 
     args = parser.parse_args()
     args.log_path = os.path.join(args.exp, "logs", args.doc)
+    if args.trg_doc:
+        args.trg_path = os.path.join(args.exp, "logs", args.trg_doc)
 
     # parse config file
     with open(os.path.join("configs", args.config), "r") as f:
@@ -123,7 +140,7 @@ def parse_args_and_config():
             with open(os.path.join(args.log_path, "config.yml"), "w") as f:
                 yaml.dump(new_config, f, default_flow_style=False)
 
-        new_config.tb_logger = tb.SummaryWriter(log_dir=tb_path)
+        tb_logger = tb.SummaryWriter(log_dir=tb_path)
         # setup logger
         level = getattr(logging, args.verbose.upper(), None)
         if not isinstance(level, int):
@@ -158,7 +175,7 @@ def parse_args_and_config():
         if args.sample:
             os.makedirs(os.path.join(args.exp, "image_samples"), exist_ok=True)
             args.image_folder = os.path.join(
-                args.exp, "image_samples", args.image_folder
+                args.exp, "image_samples", args.doc, args.image_folder
             )
             if not os.path.exists(args.image_folder):
                 os.makedirs(args.image_folder)
@@ -194,7 +211,7 @@ def parse_args_and_config():
 
     torch.backends.cudnn.benchmark = True
 
-    return args, new_config
+    return args, new_config, tb_logger
 
 
 def dict2namespace(config):
@@ -209,21 +226,25 @@ def dict2namespace(config):
 
 
 def main():
-    args, config = parse_args_and_config()
+    args, config, tb_logger = parse_args_and_config()
     logging.info("Writing log file to {}".format(args.log_path))
     logging.info("Exp instance id = {}".format(os.getpid()))
     logging.info("Exp comment = {}".format(args.comment))
 
-    try:
-        runner = Diffusion(args, config)
-        if args.sample:
-            runner.sample()
-        elif args.test:
-            runner.test()
-        else:
-            runner.train()
-    except Exception:
-        logging.error(traceback.format_exc())
+    if args.runner == "diffusion":
+        runner_cls = Diffusion
+    elif args.runner == "distill_diffusion":
+        runner_cls = DistillDiffusion
+    else:
+        return NotImplementedError
+
+    runner = runner_cls(args, config, tb_logger)
+    if args.sample:
+        runner.sample()
+    elif args.test:
+        runner.test()
+    else:
+        runner.train()
 
     return 0
 

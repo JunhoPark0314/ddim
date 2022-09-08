@@ -13,13 +13,14 @@ def generalized_steps(x, seq, model, b, **kwargs):
         seq_next = [-1] + list(seq[:-1])
         x0_preds = []
         xs = [x]
-        for i, j in zip(reversed(seq), reversed(seq_next)):
+        cond = kwargs.get("cond", [None] * len(seq))
+        for i, j, cond_i in zip(reversed(seq), reversed(seq_next), reversed(cond)):
             t = (torch.ones(n) * i).to(x.device)
             next_t = (torch.ones(n) * j).to(x.device)
             at = compute_alpha(b, t.long())
             at_next = compute_alpha(b, next_t.long())
             xt = xs[-1].to('cuda')
-            et = model(xt, t)
+            et = model(xt, t, cond_i)
             x0_t = (xt - et * (1 - at).sqrt()) / at.sqrt()
             x0_preds.append(x0_t.to('cpu'))
             c1 = (
